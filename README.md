@@ -35,21 +35,36 @@ uv run pytest
 
 ## Running
 
-Runs as a systemd `--user` service over streamable-HTTP on
-`127.0.0.1:8765`, so it survives reboots without needing a login session
-(`loginctl enable-linger lumadev` is set). Registered with Claude Code at
-user scope as an HTTP server (`claude mcp list`).
+Runs as a Docker container (`docker-compose.yml`) on the `traefik_web`
+network — the same network Traefik and `whoami` use — so it's reachable
+both:
+
+- **Locally**, via the published port: `http://127.0.0.1:8765/mcp`
+- **Externally**, via Traefik: `https://traefik-mcp.lumasystem.com/mcp`
+  (self-registered as its own route in `dynamic/traefik-mcp.yml`)
+
+Both paths require `Authorization: Bearer <MCP_AUTH_TOKEN>` — the server
+refuses to bind to a non-loopback host without a token configured. The
+MCP SDK's own DNS-rebinding protection is explicitly configured via
+`MCP_ALLOWED_HOSTS`/`MCP_ALLOWED_ORIGINS` to cover both the container's
+internal name and the public domain (it only auto-allows
+127.0.0.1/localhost by default, which would otherwise reject every
+request that arrives via Traefik with a real Host header).
+
+`restart: unless-stopped` in the compose file means it comes back up
+automatically after a reboot, same as the `traefik`/`whoami` containers.
 
 ```bash
-systemctl --user status traefik-mcp   # check it's running
-systemctl --user restart traefik-mcp  # after a code change
-journalctl --user -u traefik-mcp -f   # tail logs
+docker compose up -d --build   # start / rebuild after a code change
+docker compose logs -f         # tail logs
+docker compose down            # stop
 ```
 
-The unit file lives at `traefik-mcp.service` in this repo and is
-symlinked into `~/.config/systemd/user/`.
+Secrets (`MCP_AUTH_TOKEN`, `ACME_EMAIL`) live in a gitignored `.env`
+(see `.env.example`) — generate a token with
+`python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
 
-For local/manual runs outside systemd, stdio transport still works:
+For local/manual runs outside Docker, stdio transport still works:
 `MCP_TRANSPORT=stdio uv run traefik-mcp` (or omit `MCP_TRANSPORT` — it
 defaults to stdio).
 
