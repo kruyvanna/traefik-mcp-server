@@ -143,11 +143,27 @@ async def cross_check_config() -> dict:
 
 def main() -> None:
     if settings.mcp_transport == "streamable-http":
-        app.run(
-            transport="streamable-http",
-            host=settings.mcp_http_host,
-            port=settings.mcp_http_port,
+        import uvicorn
+        from mcp.server.transport_security import TransportSecuritySettings
+
+        from .auth_middleware import BearerAuthMiddleware
+
+        transport_security = TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=settings.mcp_allowed_hosts_list,
+            allowed_origins=settings.mcp_allowed_origins_list,
         )
+        asgi_app = app.streamable_http_app(transport_security=transport_security)
+        if settings.mcp_auth_token:
+            asgi_app = BearerAuthMiddleware(asgi_app, settings.mcp_auth_token)
+        elif settings.mcp_http_host not in ("127.0.0.1", "localhost"):
+            raise RuntimeError(
+                "Refusing to bind traefik-mcp to a non-loopback host "
+                "(MCP_HTTP_HOST="
+                f"{settings.mcp_http_host}) without MCP_AUTH_TOKEN set — "
+                "this would expose full route read/write access with no authentication."
+            )
+        uvicorn.run(asgi_app, host=settings.mcp_http_host, port=settings.mcp_http_port)
     else:
         app.run(transport="stdio")
 

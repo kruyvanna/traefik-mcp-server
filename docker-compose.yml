@@ -1,0 +1,27 @@
+services:
+  traefik-mcp:
+    build: .
+    container_name: traefik-mcp
+    restart: unless-stopped
+    environment:
+      TRAEFIK_DYNAMIC_DIR: /traefik/dynamic
+      TRAEFIK_REPO_DIR: /traefik
+      TRAEFIK_API_BASE_URL: http://traefik:8080
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
+      MCP_ALLOWED_HOSTS: "127.0.0.1:*,localhost:*,traefik-mcp:*,traefik-mcp.lumasystem.com"
+      MCP_ALLOWED_ORIGINS: "http://127.0.0.1:*,http://localhost:*,https://traefik-mcp.lumasystem.com"
+      GIT_AUTHOR_NAME: traefik-mcp
+      GIT_AUTHOR_EMAIL: ${ACME_EMAIL}
+      GIT_COMMITTER_NAME: traefik-mcp
+      GIT_COMMITTER_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - /home/lumadev/apps/traefik:/traefik
+    ports:
+      - "127.0.0.1:8765:8765"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+    name: traefik_web

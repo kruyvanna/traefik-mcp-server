@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,17 @@ class Settings(BaseSettings):
     mcp_transport: str = "stdio"
     mcp_http_host: str = "127.0.0.1"
     mcp_http_port: int = 8765
+    mcp_auth_token: Optional[str] = None
+    mcp_allowed_hosts: str = "127.0.0.1:*,localhost:*,[::1]:*"
+    mcp_allowed_origins: str = "http://127.0.0.1:*,http://localhost:*,http://[::1]:*"
+
+    @property
+    def mcp_allowed_hosts_list(self) -> list[str]:
+        return [h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip()]
+
+    @property
+    def mcp_allowed_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.mcp_allowed_origins.split(",") if o.strip()]
 
 
 def get_settings() -> Settings:
