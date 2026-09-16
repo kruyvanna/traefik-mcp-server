@@ -1,7 +1,7 @@
 # traefik-mcp
 
 A small MCP server for managing this host's Traefik file-provider dynamic
-config (`/home/lumadev/apps/traefik/dynamic/*.yml`).
+config (`/traefik/dynamic/*.yml`).
 
 ## Scope
 
