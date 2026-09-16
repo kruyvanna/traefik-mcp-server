@@ -3,6 +3,7 @@ services:
     build: .
     container_name: traefik-mcp
     restart: unless-stopped
+    user: "1000:1000"
     environment:
       TRAEFIK_DYNAMIC_DIR: /traefik/dynamic
       TRAEFIK_REPO_DIR: /traefik
