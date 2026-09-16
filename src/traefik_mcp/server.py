@@ -142,7 +142,14 @@ async def cross_check_config() -> dict:
 
 
 def main() -> None:
-    app.run(transport="stdio")
+    if settings.mcp_transport == "streamable-http":
+        app.run(
+            transport="streamable-http",
+            host=settings.mcp_http_host,
+            port=settings.mcp_http_port,
+        )
+    else:
+        app.run(transport="stdio")
 
 
 if __name__ == "__main__":

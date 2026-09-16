@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     default_entry_points: list[str] = Field(default_factory=lambda: ["websecure"])
     default_cert_resolver: str = "myresolver"
 
+    mcp_transport: str = "stdio"
+    mcp_http_host: str = "127.0.0.1"
+    mcp_http_port: int = 8765
+
 
 def get_settings() -> Settings:
     return Settings()

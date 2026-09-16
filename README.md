@@ -1,7 +1,7 @@
 # traefik-mcp
 
 A small MCP server for managing this host's Traefik file-provider dynamic
-config (`/traefik/dynamic/*.yml`).
+config (`/home/lumadev/apps/traefik/dynamic/*.yml`).
 
 ## Scope
 
@@ -33,7 +33,25 @@ cp .env.example .env   # adjust paths if needed
 uv run pytest
 ```
 
-Already registered with Claude Code at user scope (`claude mcp list`).
+## Running
+
+Runs as a systemd `--user` service over streamable-HTTP on
+`127.0.0.1:8765`, so it survives reboots without needing a login session
+(`loginctl enable-linger lumadev` is set). Registered with Claude Code at
+user scope as an HTTP server (`claude mcp list`).
+
+```bash
+systemctl --user status traefik-mcp   # check it's running
+systemctl --user restart traefik-mcp  # after a code change
+journalctl --user -u traefik-mcp -f   # tail logs
+```
+
+The unit file lives at `traefik-mcp.service` in this repo and is
+symlinked into `~/.config/systemd/user/`.
+
+For local/manual runs outside systemd, stdio transport still works:
+`MCP_TRANSPORT=stdio uv run traefik-mcp` (or omit `MCP_TRANSPORT` — it
+defaults to stdio).
 
 ## Tools
 

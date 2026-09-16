@@ -1,0 +1,19 @@
+[Unit]
+Description=traefik-mcp: MCP server for managing Traefik dynamic route config
+After=network.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/lumadev/apps/traefik-mcp
+ExecStart=/home/lumadev/apps/traefik-mcp/.venv/bin/python -m traefik_mcp.server
+Environment=TRAEFIK_DYNAMIC_DIR=/home/lumadev/apps/traefik/dynamic
+Environment=TRAEFIK_REPO_DIR=/home/lumadev/apps/traefik
+Environment=TRAEFIK_API_BASE_URL=http://127.0.0.1:8080
+Environment=MCP_TRANSPORT=streamable-http
+Environment=MCP_HTTP_HOST=127.0.0.1
+Environment=MCP_HTTP_PORT=8765
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
