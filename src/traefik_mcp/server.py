@@ -42,19 +42,28 @@ def read_dynamic_file(filename: str) -> dict:
 async def create_or_update_route(
     router_name: str,
     domain: str,
-    backend_url: str,
+    backend_url: Optional[str] = None,
     mode: str = "create",
     filename: Optional[str] = None,
     middlewares: Optional[list[str]] = None,
     entry_points: Optional[list[str]] = None,
     cert_resolver: Optional[str] = None,
     comment: Optional[str] = None,
+    backend_urls: Optional[list[str]] = None,
+    health_check_path: Optional[str] = None,
+    health_check_interval: str = "3s",
+    health_check_timeout: str = "2s",
 ) -> dict:
     """Create or update a Traefik route (a router+service pair) in dynamic/.
 
     router_name must be kebab-case and is shared by the router and service.
     domain is the Host() rule target, e.g. 'ci.apps2.lumasystem.com'.
     backend_url is where traffic is forwarded, e.g. 'http://192.168.17.152:8000'.
+    backend_urls instead load-balances one service across several backends, e.g. a
+    blue/green deploy's two ports ['http://192.168.17.152:3056', 'http://192.168.17.152:3057'];
+    pass one of backend_url / backend_urls. Several backends require health_check_path
+    (e.g. '/healthz'): Traefik then only sends traffic to backends passing it
+    (health_check_interval / health_check_timeout default to '3s' / '2s').
     filename defaults to '<router_name>.yml'; pass an existing file's name to add
     another router+service pair alongside others for the same logical remote host
     (see woodpecker.yml for this pattern).
@@ -70,6 +79,10 @@ async def create_or_update_route(
         router_name=router_name,
         domain=domain,
         backend_url=backend_url,
+        backend_urls=backend_urls or [],
+        health_check_path=health_check_path,
+        health_check_interval=health_check_interval,
+        health_check_timeout=health_check_timeout,
         filename=filename,
         middlewares=middlewares or [],
         entry_points=entry_points or [],

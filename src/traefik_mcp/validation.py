@@ -53,3 +53,15 @@ def safe_dynamic_filename(dynamic_dir: Path, filename: str) -> Path:
     if candidate.parent != resolved_dir:
         raise ValidationError(f"'{filename}' resolves outside the dynamic config directory")
     return candidate
+
+
+HEALTH_CHECK_PATH_RE = re.compile(r"^/[A-Za-z0-9._~/-]*$")
+DURATION_RE = re.compile(r"^[0-9]+(ms|s|m)$")
+
+
+def validate_health_check(path: str, interval: str, timeout: str) -> None:
+    if not HEALTH_CHECK_PATH_RE.match(path):
+        raise ValidationError(f"health_check_path '{path}' must be an absolute URL path like '/healthz'")
+    for name, value in (("health_check_interval", interval), ("health_check_timeout", timeout)):
+        if not DURATION_RE.match(value):
+            raise ValidationError(f"{name} '{value}' must be a duration like '3s' or '500ms'")

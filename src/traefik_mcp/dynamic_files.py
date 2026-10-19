@@ -10,13 +10,29 @@ from .validation import safe_dynamic_filename
 
 
 @dataclass
+class HealthCheck:
+    path: str
+    interval: Optional[str] = None
+    timeout: Optional[str] = None
+
+
+@dataclass
 class RouteEntry:
     router_name: str
     domain: str
-    backend_url: str
+    # The first backend; kept so single-backend callers can still pass/read one URL.
+    backend_url: str = ""
     middlewares: list[str] = field(default_factory=list)
     entry_points: list[str] = field(default_factory=list)
     cert_resolver: Optional[str] = None
+    # Every server of the service, in order (backend_url is backend_urls[0]).
+    backend_urls: list[str] = field(default_factory=list)
+    health_check: Optional[HealthCheck] = None
+
+    def __post_init__(self) -> None:
+        if not self.backend_urls and self.backend_url:
+            self.backend_urls = [self.backend_url]
+        self.backend_url = self.backend_urls[0] if self.backend_urls else ""
 
 
 @dataclass
@@ -132,17 +148,23 @@ def load_entries(dynamic_dir: Path, filename: str) -> tuple[Optional[str], list[
     for name, router in routers.items():
         service_name = router.get("service", name)
         service = services.get(service_name) or {}
-        servers = ((service.get("loadBalancer") or {}).get("servers")) or []
-        backend_url = servers[0]["url"] if servers else ""
+        load_balancer = service.get("loadBalancer") or {}
+        servers = load_balancer.get("servers") or []
+        health = load_balancer.get("healthCheck") or {}
         tls = router.get("tls") or {}
         entries.append(
             RouteEntry(
                 router_name=name,
                 domain=_extract_domain(router.get("rule", "")),
-                backend_url=backend_url,
+                backend_urls=[s["url"] for s in servers if s.get("url")],
                 middlewares=list(router.get("middlewares") or []),
                 entry_points=list(router.get("entryPoints") or []),
                 cert_resolver=tls.get("certResolver"),
+                health_check=HealthCheck(
+                    path=health["path"], interval=health.get("interval"), timeout=health.get("timeout")
+                )
+                if health.get("path")
+                else None,
             )
         )
     return comment, entries
@@ -178,7 +200,15 @@ def render_file(comment: Optional[str], entries: list[RouteEntry]) -> str:
         lines.append(f"    {e.router_name}:")
         lines.append("      loadBalancer:")
         lines.append("        servers:")
-        lines.append(f'          - url: "{e.backend_url}"')
+        for url in e.backend_urls:
+            lines.append(f'          - url: "{url}"')
+        if e.health_check:
+            lines.append("        healthCheck:")
+            lines.append(f"          path: {e.health_check.path}")
+            if e.health_check.interval:
+                lines.append(f"          interval: {e.health_check.interval}")
+            if e.health_check.timeout:
+                lines.append(f"          timeout: {e.health_check.timeout}")
     lines.append("")
     return "\n".join(lines)
 

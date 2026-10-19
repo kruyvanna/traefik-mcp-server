@@ -146,3 +146,105 @@ async def test_delete_route_rejects_protected_file(settings: Settings):
 async def test_delete_route_rejects_unknown_router(settings: Settings):
     with pytest.raises(route_tools.RouteToolError, match="not found"):
         await route_tools.delete_route(settings, "nonexistent", "woodpecker.yml")
+
+
+BLUE_GREEN = ["http://192.168.17.152:3056", "http://192.168.17.152:3057"]
+
+
+@pytest.mark.asyncio
+async def test_create_route_with_several_backends_and_health_check(settings: Settings, httpx_mock):
+    httpx_mock.add_response(
+        url="http://127.0.0.1:8080/api/http/routers/gitea@file",
+        json={"status": "enabled"},
+    )
+    result = await route_tools.create_or_update_route(
+        settings, make_spec(backend_url=None, backend_urls=BLUE_GREEN, health_check_path="/healthz")
+    )
+    assert result["success"] is True
+
+    import yaml
+
+    data = yaml.safe_load((settings.traefik_dynamic_dir / "gitea.yml").read_text())
+    load_balancer = data["http"]["services"]["gitea"]["loadBalancer"]
+    assert [s["url"] for s in load_balancer["servers"]] == BLUE_GREEN
+    assert load_balancer["healthCheck"] == {"path": "/healthz", "interval": "3s", "timeout": "2s"}
+
+
+@pytest.mark.asyncio
+async def test_updating_a_sibling_route_keeps_several_backends(settings: Settings, httpx_mock):
+    httpx_mock.add_response(
+        url="http://127.0.0.1:8080/api/http/routers/gitea@file",
+        json={"status": "enabled"},
+    )
+    await route_tools.create_or_update_route(
+        settings,
+        make_spec(
+            backend_url=None,
+            backend_urls=BLUE_GREEN,
+            health_check_path="/healthz",
+            filename="woodpecker.yml",
+        ),
+    )
+    httpx_mock.add_response(
+        url="http://127.0.0.1:8080/api/http/routers/woodpecker@file",
+        json={"status": "enabled"},
+    )
+    await route_tools.create_or_update_route(
+        settings,
+        make_spec(
+            router_name="woodpecker",
+            domain="ci.apps2.lumasystem.com",
+            backend_url="http://192.168.17.152:9999",
+            filename="woodpecker.yml",
+            mode=RouteMode.UPDATE,
+        ),
+    )
+
+    from traefik_mcp import dynamic_files
+
+    _, entries = dynamic_files.load_entries(settings.traefik_dynamic_dir, "woodpecker.yml")
+    gitea = next(e for e in entries if e.router_name == "gitea")
+    assert gitea.backend_urls == BLUE_GREEN
+    assert gitea.health_check == dynamic_files.HealthCheck(path="/healthz", interval="3s", timeout="2s")
+    woodpecker = next(e for e in entries if e.router_name == "woodpecker")
+    assert woodpecker.backend_urls == ["http://192.168.17.152:9999"]
+    assert woodpecker.health_check is None
+
+
+@pytest.mark.asyncio
+async def test_several_backends_require_health_check(settings: Settings):
+    with pytest.raises(route_tools.RouteToolError, match="health_check_path"):
+        await route_tools.create_or_update_route(
+            settings, make_spec(backend_url=None, backend_urls=BLUE_GREEN)
+        )
+
+
+@pytest.mark.asyncio
+async def test_backend_url_and_backend_urls_are_exclusive(settings: Settings):
+    with pytest.raises(route_tools.RouteToolError, match="not both"):
+        await route_tools.create_or_update_route(
+            settings, make_spec(backend_urls=BLUE_GREEN, health_check_path="/healthz")
+        )
+
+
+@pytest.mark.asyncio
+async def test_route_needs_a_backend(settings: Settings):
+    with pytest.raises(route_tools.RouteToolError, match="needs backend_url"):
+        await route_tools.create_or_update_route(settings, make_spec(backend_url=None))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        dict(health_check_path="healthz"),
+        dict(health_check_path="/healthz", health_check_interval="soon"),
+        dict(backend_urls=[BLUE_GREEN[0], "http://localhost:3057"], health_check_path="/healthz"),
+        dict(backend_urls=[BLUE_GREEN[0], BLUE_GREEN[0]], health_check_path="/healthz"),
+    ],
+)
+async def test_several_backends_rejects_bad_input(settings: Settings, overrides):
+    spec = dict(backend_url=None, backend_urls=BLUE_GREEN)
+    spec.update(overrides)
+    with pytest.raises(route_tools.RouteToolError):
+        await route_tools.create_or_update_route(settings, make_spec(**spec))

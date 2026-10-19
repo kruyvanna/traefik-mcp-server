@@ -4,7 +4,13 @@ from .. import dynamic_files, git_ops
 from ..config import Settings
 from ..route_model import RouteMode, RouteSpec
 from ..traefik_client import TraefikClient
-from ..validation import ValidationError, validate_backend_url, validate_domain, validate_kebab_case
+from ..validation import (
+    ValidationError,
+    validate_backend_url,
+    validate_domain,
+    validate_health_check,
+    validate_kebab_case,
+)
 
 
 class RouteToolError(Exception):
@@ -19,10 +25,27 @@ async def create_or_update_route(settings: Settings, spec: RouteSpec) -> dict:
     dynamic_dir = settings.traefik_dynamic_dir
     repo_dir = settings.traefik_repo_dir
 
+    if spec.backend_url and spec.backend_urls:
+        raise RouteToolError("Pass backend_url or backend_urls, not both")
+    backend_urls = spec.all_backend_urls
+    if not backend_urls:
+        raise RouteToolError("A route needs backend_url or backend_urls")
+    if len(set(backend_urls)) != len(backend_urls):
+        raise RouteToolError("backend_urls contains duplicates")
+    if len(backend_urls) > 1 and not spec.health_check_path:
+        raise RouteToolError(
+            "Several backends need health_check_path, or Traefik keeps sending traffic to a stopped one"
+        )
+
     try:
         validate_kebab_case(spec.router_name)
         domain_warnings = validate_domain(spec.domain)
-        validate_backend_url(spec.backend_url)
+        for url in backend_urls:
+            validate_backend_url(url)
+        if spec.health_check_path:
+            validate_health_check(
+                spec.health_check_path, spec.health_check_interval, spec.health_check_timeout
+            )
     except ValidationError as e:
         raise RouteToolError(str(e)) from e
 
@@ -65,10 +88,17 @@ async def create_or_update_route(settings: Settings, spec: RouteSpec) -> dict:
         dynamic_files.RouteEntry(
             router_name=spec.router_name,
             domain=spec.domain,
-            backend_url=spec.backend_url,
+            backend_urls=backend_urls,
             middlewares=middlewares,
             entry_points=entry_points,
             cert_resolver=cert_resolver,
+            health_check=dynamic_files.HealthCheck(
+                path=spec.health_check_path,
+                interval=spec.health_check_interval,
+                timeout=spec.health_check_timeout,
+            )
+            if spec.health_check_path
+            else None,
         )
     )
     if comment is None and spec.comment:
